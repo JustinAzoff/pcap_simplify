@@ -71,6 +71,7 @@ func server(port int, pktchan <-chan []byte) error {
 			return err
 		}
 	}
+	conn.Close()
 	return nil
 }
 func client(port int, pktchan <-chan []byte) error {
@@ -87,6 +88,7 @@ func client(port int, pktchan <-chan []byte) error {
 			return err
 		}
 	}
+	conn.Close()
 	return nil
 }
 
@@ -141,6 +143,7 @@ func expand(r io.Reader, outputFilename string, port int) (int, error) {
 		}
 		time.Sleep(100 * time.Millisecond)
 	}
+	time.Sleep(1 * time.Second)
 	cmd.Process.Signal(syscall.SIGINT)
 	cmd.Wait()
 
