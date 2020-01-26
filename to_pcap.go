@@ -15,8 +15,8 @@ import (
 )
 
 var MAGIC = []byte("\x01PKT")
-var FLOW_ORIG = byte('\x01')
-var FLOW_RESP = byte('\x02')
+var FLOW_RESP = byte('\x01')
+var FLOW_ORIG = byte('\x02')
 
 type BufferSplitter struct {
 	data []byte // Could this just be a type alias for []byte?
@@ -125,6 +125,7 @@ func expand(r io.Reader, outputFilename string, port int) (int, error) {
 			log.Printf("Client error: %v", err)
 		}
 	}()
+	time.Sleep(1 * time.Second)
 
 	for {
 		is_orig, payload, err := b.Next()
@@ -168,7 +169,7 @@ func main() {
 	}
 	defer inf.Close()
 
-	packets, err := expand(inf, output, 443)
+	packets, err := expand(inf, output, 445)
 
 	if err != nil {
 		log.Fatal(err)
