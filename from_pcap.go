@@ -22,10 +22,11 @@ func simplify(r *pcapgo.Reader, w io.Writer) (int, error) {
 	firstSeenFlow := ""
 	for packet := range ps.Packets() {
 		totalPackets++
-		flow := fmt.Sprintf("%v", packet.NetworkLayer().NetworkFlow())
+		flow := fmt.Sprintf("%v %v", packet.NetworkLayer().NetworkFlow(), packet.TransportLayer().TransportFlow())
 		if firstSeenFlow == "" {
 			firstSeenFlow = flow
 		}
+		//fmt.Printf("First=%s, this=%s\n", firstSeenFlow, flow)
 		if app := packet.ApplicationLayer(); app != nil {
 			payload := app.LayerContents()
 			w.Write(MAGIC)
