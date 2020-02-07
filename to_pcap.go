@@ -162,6 +162,11 @@ func main() {
 	input := flag.Args()[0]
 	output := flag.Args()[1]
 
+	if input == output {
+		log.Fatalf("Input and output can not be the same file")
+		return
+	}
+
 	inf, err := os.Open(input)
 	if err != nil {
 		log.Fatalf("Can't open input: %v", err)
@@ -169,7 +174,7 @@ func main() {
 	}
 	defer inf.Close()
 
-	packets, err := expand(inf, output, 445)
+	packets, err := expand(inf, output, 88)
 
 	if err != nil {
 		log.Fatal(err)
