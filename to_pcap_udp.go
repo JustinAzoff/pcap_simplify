@@ -53,15 +53,15 @@ func (b *BufferSplitter) Next() (bool, []byte, error) {
 }
 
 func server(port int, pktchan <-chan []byte) error {
-	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	dst, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return err
+	}
+	conn, err := net.ListenUDP("udp4", dst)
 	if err != nil {
 		return err
 	}
 	log.Printf("Listening on port %d", port)
-	conn, err := l.Accept()
-	if err != nil {
-		return err
-	}
 	log.Printf("Got connection")
 	go io.Copy(ioutil.Discard, conn)
 	for msg := range pktchan {
@@ -75,7 +75,12 @@ func server(port int, pktchan <-chan []byte) error {
 	return nil
 }
 func client(port int, pktchan <-chan []byte) error {
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+	dst, err := net.ResolveUDPAddr("udp4", fmt.Sprintf("127.0.0.1:%d", port))
+	if err != nil {
+		return err
+	}
+
+	conn, err := net.DialUDP("udp4", nil, dst)
 	if err != nil {
 		return err
 	}
@@ -174,7 +179,7 @@ func main() {
 	}
 	defer inf.Close()
 
-	packets, err := expand(inf, output, 110)
+	packets, err := expand(inf, output, 88)
 
 	if err != nil {
 		log.Fatal(err)
