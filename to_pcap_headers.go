@@ -81,7 +81,7 @@ func expand(r io.Reader, w *pcapgo.Writer) (int, error) {
 			Length:        len(payload),
 		}
 		err = w.WritePacket(ci, payload)
-        log.Printf("Wrote packet of length %d", len(payload))
+		log.Printf("Wrote packet of length %d", len(payload))
 		if err != nil {
 			return totalPackets, err
 		}
