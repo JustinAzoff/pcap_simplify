@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
+	"net"
 	"os"
 	"time"
 
@@ -66,6 +67,22 @@ func expand(r io.Reader, w *pcapgo.Writer) (int, error) {
 	totalPackets := 0
 	start := time.Now()
 	ts := start
+
+	sMac, _ := net.ParseMAC("00:00:00:00:00:01")
+	dMac, _ := net.ParseMAC("00:00:00:00:00:02")
+
+	opts := gopacket.SerializeOptions{
+		FixLengths:       true,
+		ComputeChecksums: true,
+	}
+
+	eth := layers.Ethernet{
+		SrcMAC: sMac,
+		DstMAC: dMac,
+		//TODO: FIXME: determine automatically
+		EthernetType: layers.EthernetTypeIPv6,
+	}
+
 	for {
 		ts = ts.Add(time.Duration(200) * time.Millisecond)
 		_, payload, err := b.Next()
@@ -75,15 +92,36 @@ func expand(r io.Reader, w *pcapgo.Writer) (int, error) {
 		if err != nil {
 			return totalPackets, err
 		}
+
+		buf := gopacket.NewSerializeBuffer()
+		/*
+			err = eth.SerializeTo(buf, opts)
+			if err != nil {
+				return totalPackets, fmt.Errorf("eth.SerializeTo: %w", err)
+			}
+			bytes, err := buf.AppendBytes(len(payload))
+			if err != nil {
+				return totalPackets, fmt.Errorf("buf.Apppend: %w", err)
+			}
+			copy(bytes, payload)
+		*/
+		gopacket.SerializeLayers(buf, opts,
+			&eth,
+			gopacket.Payload(payload),
+		)
+
+		packetData := buf.Bytes()
+
 		ci := gopacket.CaptureInfo{
 			Timestamp:     ts,
-			CaptureLength: len(payload),
-			Length:        len(payload),
+			CaptureLength: len(packetData),
+			Length:        len(packetData),
 		}
-		err = w.WritePacket(ci, payload)
-        log.Printf("Wrote packet of length %d", len(payload))
+
+		err = w.WritePacket(ci, packetData)
+		log.Printf("Wrote packet of length %d", len(packetData))
 		if err != nil {
-			return totalPackets, err
+			return totalPackets, fmt.Errorf("Error writing packet %w", err)
 		}
 		totalPackets += 1
 	}
@@ -120,7 +158,7 @@ func main() {
 	}
 
 	w := pcapgo.NewWriter(outf)
-	w.WriteFileHeader(65536, layers.LinkTypeRaw)
+	w.WriteFileHeader(65536, layers.LinkTypeEthernet)
 
 	packets, err := expand(inf, w)
 
