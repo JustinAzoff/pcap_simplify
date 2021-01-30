@@ -16,6 +16,12 @@ var (
 	snapshotLen uint32 = 1500
 )
 
+type Endpoint struct {
+	eth layers.Ethernet
+	ip  layers.IPv4
+	tcp layers.TCP
+}
+
 type TCPPacketGenerator struct {
 	handle     *pcap.Handle
 	SourceMAC  net.HardwareAddr
@@ -24,8 +30,12 @@ type TCPPacketGenerator struct {
 	DestIP     net.IP
 	SourcePort layers.TCPPort
 	DestPort   layers.TCPPort
-	buf        gopacket.SerializeBuffer
-	opts       gopacket.SerializeOptions
+
+	buf  gopacket.SerializeBuffer
+	opts gopacket.SerializeOptions
+
+	s_c Endpoint
+	c_s Endpoint
 }
 
 func NewTCPPacketGenerator(handle *pcap.Handle) (*TCPPacketGenerator, error) {
@@ -63,6 +73,34 @@ func NewTCPPacketGenerator(handle *pcap.Handle) (*TCPPacketGenerator, error) {
 		DestMAC:   destMAC,
 		SourceIP:  sourceIP,
 		DestIP:    destIP,
+		c_s: Endpoint{
+			eth: layers.Ethernet{
+				SrcMAC:       sourceMAC,
+				DstMAC:       destMAC,
+				EthernetType: layers.EthernetTypeIPv4,
+			},
+			ip: layers.IPv4{
+				SrcIP:    sourceIP,
+				DstIP:    destIP,
+				Version:  4,
+				TTL:      64,
+				Protocol: layers.IPProtocolTCP,
+			},
+		},
+		s_c: Endpoint{
+			eth: layers.Ethernet{
+				SrcMAC:       destMAC,
+				DstMAC:       sourceMAC,
+				EthernetType: layers.EthernetTypeIPv4,
+			},
+			ip: layers.IPv4{
+				SrcIP:    destIP,
+				DstIP:    sourceIP,
+				Version:  4,
+				TTL:      64,
+				Protocol: layers.IPProtocolTCP,
+			},
+		},
 	}
 	return &t, nil
 }
@@ -77,71 +115,101 @@ func (t *TCPPacketGenerator) Connect(sourcePort, destPort int) {
 	t.SourcePort = layers.TCPPort(sourcePort)
 	t.DestPort = layers.TCPPort(destPort)
 	log.Printf("Generating initial connection from %d to %d", sourcePort, destPort)
-	c_s_eth := layers.Ethernet{
-		SrcMAC:       t.SourceMAC,
-		DstMAC:       t.DestMAC,
-		EthernetType: layers.EthernetTypeIPv4,
-	}
-	s_c_eth := layers.Ethernet{
-		SrcMAC:       t.DestMAC,
-		DstMAC:       t.SourceMAC,
-		EthernetType: layers.EthernetTypeIPv4,
-	}
-	c_s_ip4 := layers.IPv4{
-		SrcIP:    t.SourceIP,
-		DstIP:    t.DestIP,
-		Version:  4,
-		TTL:      64,
-		Protocol: layers.IPProtocolTCP,
-	}
-	s_c_ip4 := layers.IPv4{
-		SrcIP:    t.DestIP,
-		DstIP:    t.SourceIP,
-		Version:  4,
-		TTL:      64,
-		Protocol: layers.IPProtocolTCP,
-	}
-	c_s_tcp := layers.TCP{
+	t.s_c.tcp = layers.TCP{
 		SrcPort: t.SourcePort,
 		DstPort: t.DestPort,
 	}
-	s_c_tcp := layers.TCP{
+	t.c_s.tcp = layers.TCP{
 		SrcPort: t.DestPort,
 		DstPort: t.SourcePort,
 	}
 	// SYN
-	c_s_tcp.SYN = true
-	c_s_tcp.Ack++
-	c_s_tcp.SetNetworkLayerForChecksum(&c_s_ip4)
-	if err := t.send(&c_s_eth, &c_s_ip4, &c_s_tcp); err != nil {
+	t.c_s.tcp.SYN = true
+	t.c_s.tcp.Ack++
+	t.c_s.tcp.SetNetworkLayerForChecksum(&t.c_s.ip)
+	if err := t.send(&t.c_s.eth, &t.c_s.ip, &t.c_s.tcp); err != nil {
 		log.Fatal(err)
 	}
 
 	//synack
-	s_c_tcp.SYN = true
-	s_c_tcp.ACK = true
-	s_c_tcp.Seq++
-	s_c_tcp.Ack++
-	s_c_tcp.SetNetworkLayerForChecksum(&s_c_ip4)
-	s_c_tcp.Window = 32000
+	t.s_c.tcp.SYN = true
+	t.s_c.tcp.ACK = true
+	t.s_c.tcp.Seq++
+	t.s_c.tcp.Ack++
+	t.s_c.tcp.SetNetworkLayerForChecksum(&t.s_c.ip)
+	t.s_c.tcp.Window = 32000
 
-	if err := t.send(&s_c_eth, &s_c_ip4, &s_c_tcp); err != nil {
+	if err := t.send(&t.s_c.eth, &t.s_c.ip, &t.s_c.tcp); err != nil {
 		log.Fatal(err)
 	}
 	//ack
-	c_s_tcp.ACK = true
-	c_s_tcp.SYN = false
-	c_s_tcp.Seq++
-	c_s_tcp.Ack++
-	c_s_tcp.Window = 32000
-	c_s_tcp.SetNetworkLayerForChecksum(&c_s_ip4)
-	if err := t.send(&c_s_eth, &c_s_ip4, &c_s_tcp); err != nil {
+	t.c_s.tcp.ACK = true
+	t.c_s.tcp.SYN = false
+	t.c_s.tcp.Seq++
+	t.c_s.tcp.Ack++
+	t.c_s.tcp.Window = 32000
+	t.c_s.tcp.SetNetworkLayerForChecksum(&t.c_s.ip)
+	if err := t.send(&t.c_s.eth, &t.c_s.ip, &t.c_s.tcp); err != nil {
+		log.Fatal(err)
+	}
+	t.c_s.tcp.SYN = false
+	t.s_c.tcp.SYN = false
+}
+
+func (t *TCPPacketGenerator) Write(data []byte, isOrig bool, autoAck bool) error {
+	//Client or server endpoints, depending on isOrig
+	var a, b Endpoint
+	if isOrig {
+		a = t.c_s
+		b = t.s_c
+	} else {
+		a = t.s_c
+		b = t.s_c
+	}
+	a.tcp.ACK = true
+	a.tcp.PSH = true
+	payload := gopacket.Payload(data)
+	if err := t.send(&a.eth, &a.ip, &a.tcp, &payload); err != nil {
+		log.Fatal(err)
+	}
+	a.tcp.Seq += uint32(len(payload))
+	b.tcp.Ack += uint32(len(payload))
+
+	if autoAck {
+		b.tcp.ACK = true
+		if err := t.send(&b.eth, &b.ip, &b.tcp); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	return nil
+}
+func (t *TCPPacketGenerator) Close() {
+	//send fin
+	t.c_s.tcp.FIN = true
+	if err := t.send(&t.c_s.eth, &t.c_s.ip, &t.c_s.tcp); err != nil {
 		log.Fatal(err)
 	}
 
-	//clear flags
-	c_s_tcp.SYN = false
-	s_c_tcp.SYN = false
+	//ack clients fin, then send our own
+	t.s_c.tcp.ACK = true
+	t.s_c.tcp.PSH = false
+	if err := t.send(&t.s_c.eth, &t.s_c.ip, &t.s_c.tcp); err != nil {
+		log.Fatal(err)
+	}
+	t.s_c.tcp.FIN = true
+	t.s_c.tcp.ACK = true
+	if err := t.send(&t.s_c.eth, &t.s_c.ip, &t.s_c.tcp); err != nil {
+		log.Fatal(err)
+	}
+	//client ack clients fin
+	t.c_s.tcp.FIN = false
+	t.c_s.tcp.ACK = true
+	t.c_s.tcp.Ack++
+	t.c_s.tcp.Seq++
+	if err := t.send(&t.c_s.eth, &t.c_s.ip, &t.c_s.tcp); err != nil {
+		log.Fatal(err)
+	}
 }
 
 func (t *TCPPacketGenerator) send(l ...gopacket.SerializableLayer) error {
@@ -162,72 +230,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed: %w", err)
 	}
-	t.Connect(0, 445)
-
+	t.Connect(0, 80)
+	connect := []byte("CONNECT foo HTTP/1.1\r\n\r\n")
+	reply := []byte("HTTP/1.1 200 OK\r\n\r\n")
+	t.Write(connect, true, false)
+	t.Write(reply, false, false)
+	t.Close()
 	/*
 		connect := gopacket.Payload([]byte("CONNECT foo HTTP/1.1\r\n\r\n"))
-		reply := gopacket.Payload([]byte("HTTP/1.1 200 OK\r\n\r\n"))
-
-		eth := layers.Ethernet{
-			SrcMAC:       sMac,
-			DstMAC:       dMac,
-			EthernetType: layers.EthernetTypeIPv4,
-		}
-		c_s_ip4 := layers.IPv4{
-			SrcIP:    sIP,
-			DstIP:    dIP,
-			Version:  4,
-			TTL:      64,
-			Protocol: layers.IPProtocolTCP,
-		}
-		s_c_ip4 := layers.IPv4{
-			SrcIP:    dIP,
-			DstIP:    sIP,
-			Version:  4,
-			TTL:      64,
-			Protocol: layers.IPProtocolTCP,
-		}
-		c_s_tcp := layers.TCP{
-			SrcPort: layers.TCPPort(sPort),
-			DstPort: 8000,
-		}
-		s_c_tcp := layers.TCP{
-			SrcPort: 8000,
-			DstPort: layers.TCPPort(sPort),
-		}
-		// SYN
-		c_s_tcp.SYN = true
-		c_s_tcp.Ack++
-		c_s_tcp.SetNetworkLayerForChecksum(&c_s_ip4)
-		if err := s.send(&eth, &c_s_ip4, &c_s_tcp); err != nil {
-			log.Fatal(err)
-		}
-
-		//synack
-		s_c_tcp.SYN = true
-		s_c_tcp.ACK = true
-		s_c_tcp.Seq++
-		s_c_tcp.Ack++
-		s_c_tcp.SetNetworkLayerForChecksum(&s_c_ip4)
-		s_c_tcp.Window = 32000
-
-		if err := s.send(&eth, &s_c_ip4, &s_c_tcp); err != nil {
-			log.Fatal(err)
-		}
-		//ack
-		c_s_tcp.ACK = true
-		c_s_tcp.SYN = false
-		c_s_tcp.Seq++
-		c_s_tcp.Ack++
-		c_s_tcp.Window = 32000
-		c_s_tcp.SetNetworkLayerForChecksum(&c_s_ip4)
-		if err := s.send(&eth, &c_s_ip4, &c_s_tcp); err != nil {
-			log.Fatal(err)
-		}
-
-		//clear flags
-		c_s_tcp.SYN = false
-		s_c_tcp.SYN = false
 
 		//CONNECT
 		c_s_tcp.ACK = true
