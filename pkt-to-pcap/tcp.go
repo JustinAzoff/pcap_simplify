@@ -158,13 +158,13 @@ func (t *TCPPacketGenerator) Connect(sourcePort, destPort int) {
 
 func (t *TCPPacketGenerator) Write(data []byte, isOrig bool, autoAck bool) error {
 	//Client or server endpoints, depending on isOrig
-	var a, b Endpoint
+	var a, b *Endpoint
 	if isOrig {
-		a = t.c_s
-		b = t.s_c
+		a = &t.c_s
+		b = &t.s_c
 	} else {
-		a = t.s_c
-		b = t.s_c
+		a = &t.s_c
+		b = &t.c_s
 	}
 	a.tcp.ACK = true
 	a.tcp.PSH = true
