@@ -7,11 +7,10 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"net"
 	"os"
-	"os/exec"
-	"syscall"
 	"time"
+
+	"github.com/google/gopacket/pcap"
 )
 
 var MAGIC = []byte("\x01PKT")
@@ -52,46 +51,6 @@ func (b *BufferSplitter) Next() (bool, []byte, error) {
 	return is_orig, payload, nil
 }
 
-func server(port int, pktchan <-chan []byte) error {
-	l, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		return err
-	}
-	log.Printf("Listening on port %d", port)
-	conn, err := l.Accept()
-	if err != nil {
-		return err
-	}
-	log.Printf("Got connection")
-	go io.Copy(ioutil.Discard, conn)
-	for msg := range pktchan {
-		log.Printf("Server writing %d bytes", len(msg))
-		_, err := conn.Write(msg)
-		if err != nil {
-			return err
-		}
-	}
-	conn.Close()
-	return nil
-}
-func client(port int, pktchan <-chan []byte) error {
-	conn, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
-	if err != nil {
-		return err
-	}
-	log.Printf("Connected!")
-	go io.Copy(ioutil.Discard, conn)
-	for msg := range pktchan {
-		log.Printf("Client writing %d bytes", len(msg))
-		_, err := conn.Write(msg)
-		if err != nil {
-			return err
-		}
-	}
-	conn.Close()
-	return nil
-}
-
 func expand(r io.Reader, outputFilename string, port int) (int, error) {
 	//just slurp it up
 	data, err := ioutil.ReadAll(r)
@@ -103,30 +62,17 @@ func expand(r io.Reader, outputFilename string, port int) (int, error) {
 		return 0, err
 	}
 	totalPackets := 0
-	cmd := exec.Command("tcpdump", "-i", "lo", "-w", outputFilename, fmt.Sprintf("port %d", port))
-	err = cmd.Start()
+	log.Printf("Writing pcap to %s", outputFilename)
+	handle, err := pcap.OpenLive(outputFilename, 65536, true, pcap.BlockForever)
 	if err != nil {
-		return 0, err
+		log.Fatal(err)
 	}
-
-	serverPkts := make(chan []byte)
-	clientPkts := make(chan []byte)
-
-	go func() {
-		err := server(port, serverPkts)
-		if err != nil {
-			log.Printf("Server error: %v", err)
-		}
-	}()
-	time.Sleep(1 * time.Second)
-	go func() {
-		err := client(port, clientPkts)
-		if err != nil {
-			log.Printf("Client error: %v", err)
-		}
-	}()
-	time.Sleep(1 * time.Second)
-
+	defer handle.Close()
+	t, err := NewTCPPacketGenerator(handle)
+	if err != nil {
+		log.Fatalf("Failed: %w", err)
+	}
+	t.Connect(0, 445)
 	for {
 		is_orig, payload, err := b.Next()
 		if err == io.EOF {
@@ -137,17 +83,11 @@ func expand(r io.Reader, outputFilename string, port int) (int, error) {
 		}
 		totalPackets++
 		//log.Printf("is_orig %v Data is %d bytes\n", is_orig, len(payload))
-		if is_orig {
-			clientPkts <- payload
-		} else {
-			serverPkts <- payload
-		}
-		time.Sleep(100 * time.Millisecond)
+		t.Write(payload, is_orig, false)
+		time.Sleep(10 * time.Millisecond)
 	}
 	time.Sleep(1 * time.Second)
-	cmd.Process.Signal(syscall.SIGINT)
-	cmd.Wait()
-
+	t.Close()
 	return totalPackets, nil
 }
 
@@ -174,7 +114,7 @@ func main() {
 	}
 	defer inf.Close()
 
-	packets, err := expand(inf, output, 110)
+	packets, err := expand(inf, output, 445)
 
 	if err != nil {
 		log.Fatal(err)
