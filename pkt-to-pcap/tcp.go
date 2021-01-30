@@ -115,11 +115,11 @@ func (t *TCPPacketGenerator) Connect(sourcePort, destPort int) {
 	t.SourcePort = layers.TCPPort(sourcePort)
 	t.DestPort = layers.TCPPort(destPort)
 	log.Printf("Generating initial connection from %d to %d", sourcePort, destPort)
-	t.s_c.tcp = layers.TCP{
+	t.c_s.tcp = layers.TCP{
 		SrcPort: t.SourcePort,
 		DstPort: t.DestPort,
 	}
-	t.c_s.tcp = layers.TCP{
+	t.s_c.tcp = layers.TCP{
 		SrcPort: t.DestPort,
 		DstPort: t.SourcePort,
 	}
@@ -142,6 +142,7 @@ func (t *TCPPacketGenerator) Connect(sourcePort, destPort int) {
 	if err := t.send(&t.s_c.eth, &t.s_c.ip, &t.s_c.tcp); err != nil {
 		log.Fatal(err)
 	}
+	t.s_c.tcp.Seq++
 	//ack
 	t.c_s.tcp.ACK = true
 	t.c_s.tcp.SYN = false
@@ -169,6 +170,7 @@ func (t *TCPPacketGenerator) Write(data []byte, isOrig bool, autoAck bool) error
 	a.tcp.ACK = true
 	a.tcp.PSH = true
 	payload := gopacket.Payload(data)
+	//log.Printf("Writing packet seq number %d %q to %+v", a.tcp.Seq, data, a.tcp)
 	if err := t.send(&a.eth, &a.ip, &a.tcp, &payload); err != nil {
 		log.Fatal(err)
 	}
@@ -190,8 +192,10 @@ func (t *TCPPacketGenerator) Close() {
 	if err := t.send(&t.c_s.eth, &t.c_s.ip, &t.c_s.tcp); err != nil {
 		log.Fatal(err)
 	}
+	t.c_s.tcp.Seq++
 
 	//ack clients fin, then send our own
+	t.s_c.tcp.Ack++
 	t.s_c.tcp.ACK = true
 	t.s_c.tcp.PSH = false
 	if err := t.send(&t.s_c.eth, &t.s_c.ip, &t.s_c.tcp); err != nil {
@@ -206,7 +210,6 @@ func (t *TCPPacketGenerator) Close() {
 	t.c_s.tcp.FIN = false
 	t.c_s.tcp.ACK = true
 	t.c_s.tcp.Ack++
-	t.c_s.tcp.Seq++
 	if err := t.send(&t.c_s.eth, &t.c_s.ip, &t.c_s.tcp); err != nil {
 		log.Fatal(err)
 	}
@@ -219,6 +222,7 @@ func (t *TCPPacketGenerator) send(l ...gopacket.SerializableLayer) error {
 	return t.handle.WritePacketData(t.buf.Bytes())
 }
 
+/*
 func main() {
 	handle, err := pcap.OpenLive("en7", 65536, true, pcap.BlockForever)
 	if err != nil {
@@ -236,50 +240,5 @@ func main() {
 	t.Write(connect, true, false)
 	t.Write(reply, false, false)
 	t.Close()
-	/*
-		connect := gopacket.Payload([]byte("CONNECT foo HTTP/1.1\r\n\r\n"))
-
-		//CONNECT
-		c_s_tcp.ACK = true
-		c_s_tcp.PSH = true
-		if err := s.send(&eth, &c_s_ip4, &c_s_tcp, &connect); err != nil {
-			log.Fatal(err)
-		}
-		c_s_tcp.Seq += uint32(len(connect))
-		s_c_tcp.Ack += uint32(len(connect))
-
-		//reply
-		s_c_tcp.Seq++
-		if err := s.send(&eth, &s_c_ip4, &s_c_tcp, &reply); err != nil {
-			log.Fatal(err)
-		}
-		s_c_tcp.Seq += uint32(len(reply))
-		c_s_tcp.Ack += 1 + uint32(len(reply))
-
-		//send fin
-		s_c_tcp.FIN = true
-		if err := s.send(&eth, &s_c_ip4, &s_c_tcp); err != nil {
-			log.Fatal(err)
-		}
-
-		//ack servers fin, then send our own
-		c_s_tcp.ACK = true
-		c_s_tcp.PSH = false
-		if err := s.send(&eth, &c_s_ip4, &c_s_tcp); err != nil {
-			log.Fatal(err)
-		}
-		c_s_tcp.FIN = true
-		c_s_tcp.ACK = true
-		if err := s.send(&eth, &c_s_ip4, &c_s_tcp); err != nil {
-			log.Fatal(err)
-		}
-		//server ack clients fin
-		s_c_tcp.FIN = false
-		s_c_tcp.ACK = true
-		s_c_tcp.Ack++
-		s_c_tcp.Seq++
-		if err := s.send(&eth, &s_c_ip4, &s_c_tcp); err != nil {
-			log.Fatal(err)
-		}
-	*/
 }
+*/
