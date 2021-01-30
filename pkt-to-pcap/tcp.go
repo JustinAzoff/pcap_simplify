@@ -125,7 +125,6 @@ func (t *TCPPacketGenerator) Connect(sourcePort, destPort int) {
 	}
 	// SYN
 	t.c_s.tcp.SYN = true
-	t.c_s.tcp.Ack++
 	t.c_s.tcp.SetNetworkLayerForChecksum(&t.c_s.ip)
 	if err := t.send(&t.c_s.eth, &t.c_s.ip, &t.c_s.tcp); err != nil {
 		log.Fatal(err)
