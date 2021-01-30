@@ -73,6 +73,7 @@ func expand(r io.Reader, outputFilename string, port int) (int, error) {
 		log.Fatalf("Failed: %w", err)
 	}
 	t.Connect(0, 445)
+	var pl []byte
 	for {
 		is_orig, payload, err := b.Next()
 		if err == io.EOF {
@@ -82,8 +83,16 @@ func expand(r io.Reader, outputFilename string, port int) (int, error) {
 			return totalPackets, err
 		}
 		totalPackets++
-		//log.Printf("is_orig %v Data is %d bytes\n", is_orig, len(payload))
-		t.Write(payload, is_orig, false)
+		for len(payload) > 0 {
+			if len(payload) > 1400 {
+				pl = payload[0:1400]
+			} else {
+				pl = payload
+			}
+			log.Printf("is_orig %v sending %d bytes\n", is_orig, len(pl))
+			t.Write(pl, is_orig, false)
+			payload = payload[len(pl):len(payload)]
+		}
 		time.Sleep(10 * time.Millisecond)
 	}
 	time.Sleep(1 * time.Second)
