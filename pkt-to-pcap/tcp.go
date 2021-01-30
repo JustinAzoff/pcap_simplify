@@ -124,6 +124,7 @@ func (t *TCPPacketGenerator) Connect(sourcePort, destPort int) {
 		DstPort: t.SourcePort,
 	}
 	// SYN
+	t.s_c.tcp.Window = 32000
 	t.c_s.tcp.SYN = true
 	t.c_s.tcp.SetNetworkLayerForChecksum(&t.c_s.ip)
 	if err := t.send(&t.c_s.eth, &t.c_s.ip, &t.c_s.tcp); err != nil {
@@ -147,11 +148,13 @@ func (t *TCPPacketGenerator) Connect(sourcePort, destPort int) {
 	t.c_s.tcp.SYN = false
 	t.c_s.tcp.Seq++
 	t.c_s.tcp.Ack++
-	t.c_s.tcp.Window = 32000
+	t.c_s.tcp.Ack++ //TODO:WTF is going on here.. it says it's 1, but sends 0
 	t.c_s.tcp.SetNetworkLayerForChecksum(&t.c_s.ip)
+	//log.Printf("Sending final ack packet with ack=%d %+v", t.c_s.tcp.Ack, t.c_s.tcp)
 	if err := t.send(&t.c_s.eth, &t.c_s.ip, &t.c_s.tcp); err != nil {
 		log.Fatal(err)
 	}
+
 	t.c_s.tcp.SYN = false
 	t.s_c.tcp.SYN = false
 }
