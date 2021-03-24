@@ -59,7 +59,12 @@ func main() {
 		return
 	}
 	defer inf.Close()
+
 	r, err := pcapgo.NewReader(inf)
+	if err != nil {
+		log.Fatalf("Can't parse input as pcap file: %v", err)
+		return
+	}
 
 	outf, err := os.Create(output)
 	if err != nil {
