@@ -1,4 +1,4 @@
-module gitub.com/JustinAzoff/pcap_simplify
+module github.com/JustinAzoff/pcap_simplify
 
 go 1.16
 
