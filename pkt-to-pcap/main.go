@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/google/gopacket/pcap"
@@ -51,7 +52,7 @@ func (b *BufferSplitter) Next() (bool, []byte, error) {
 	return is_orig, payload, nil
 }
 
-func expand(r io.Reader, outputFilename string, port int) (int, error) {
+func expand(r io.Reader, output string, port int) (int, error) {
 	//just slurp it up
 	data, err := ioutil.ReadAll(r)
 	if err != nil {
@@ -62,8 +63,8 @@ func expand(r io.Reader, outputFilename string, port int) (int, error) {
 		return 0, err
 	}
 	totalPackets := 0
-	log.Printf("Writing pcap to %s", outputFilename)
-	handle, err := pcap.OpenLive(outputFilename, 65536, true, pcap.BlockForever)
+	log.Printf("Writing pcap to %s", output)
+	handle, err := pcap.OpenLive(output, 65536, true, pcap.BlockForever)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -72,7 +73,7 @@ func expand(r io.Reader, outputFilename string, port int) (int, error) {
 	if err != nil {
 		log.Fatalf("Failed: %w", err)
 	}
-	t.Connect(0, 445)
+	t.Connect(0, port)
 	var pl []byte
 	for {
 		is_orig, payload, err := b.Next()
@@ -103,8 +104,10 @@ func expand(r io.Reader, outputFilename string, port int) (int, error) {
 func main() {
 	flag.Parse()
 
-	if len(flag.Args()) != 2 {
-		fmt.Printf("Usage: %s infile outfile\n", os.Args[0])
+	if len(flag.Args()) != 3 {
+		fmt.Printf("Usage: %s infile network_interface port\n", os.Args[0])
+		fmt.Printf("\nThis streams the packets to network interface on the port specified, and\n")
+		fmt.Printf("will need to be captured by tcpdump/wireshark/etc.\n");
 		os.Exit(1)
 	}
 
@@ -123,7 +126,13 @@ func main() {
 	}
 	defer inf.Close()
 
-	packets, err := expand(inf, output, 445)
+	port, err := strconv.Atoi(flag.Args()[2])
+	if err != nil {
+		log.Fatalf("Port argument needs to be an integer value")
+		return
+	}
+
+	packets, err := expand(inf, output, port)
 
 	if err != nil {
 		log.Fatal(err)

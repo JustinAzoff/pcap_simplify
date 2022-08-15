@@ -223,24 +223,3 @@ func (t *TCPPacketGenerator) send(l ...gopacket.SerializableLayer) error {
 	}
 	return t.handle.WritePacketData(t.buf.Bytes())
 }
-
-/*
-func main() {
-	handle, err := pcap.OpenLive("en7", 65536, true, pcap.BlockForever)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer handle.Close()
-
-	t, err := NewTCPPacketGenerator(handle)
-	if err != nil {
-		log.Fatalf("Failed: %w", err)
-	}
-	t.Connect(0, 80)
-	connect := []byte("CONNECT foo HTTP/1.1\r\n\r\n")
-	reply := []byte("HTTP/1.1 200 OK\r\n\r\n")
-	t.Write(connect, true, false)
-	t.Write(reply, false, false)
-	t.Close()
-}
-*/
