@@ -17,8 +17,8 @@ import (
 )
 
 var MAGIC = []byte("\x01PKT")
-var FLOW_RESP = byte('\x01')
-var FLOW_ORIG = byte('\x02')
+var FLOW_ORIG = byte('\x01')
+var FLOW_RESP = byte('\x02')
 
 type BufferSplitter struct {
 	data []byte // Could this just be a type alias for []byte?
