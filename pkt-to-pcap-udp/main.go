@@ -16,7 +16,6 @@ import (
 
 var MAGIC = []byte("\x01PKT")
 var FLOW_ORIG = byte('\x01')
-var FLOW_RESP = byte('\x02')
 
 type BufferSplitter struct {
 	data []byte // Could this just be a type alias for []byte?
@@ -38,7 +37,7 @@ func (b *BufferSplitter) Next() (bool, []byte, error) {
 		return false, []byte{}, io.EOF
 	}
 	b.data = b.data[len(MAGIC):]
-	is_orig := (b.data[0] == FLOW_ORIG)
+	is_orig := (b.data[0] & FLOW_ORIG) == 0x01
 	//fmt.Printf("Next byte is %d. is_orig=%v\n", b.data[0], is_orig)
 	//skip is_orig
 	b.data = b.data[1:]
