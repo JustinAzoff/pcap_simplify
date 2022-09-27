@@ -37,7 +37,7 @@ func (b *BufferSplitter) Next() (bool, []byte, error) {
 		return false, []byte{}, io.EOF
 	}
 	b.data = b.data[len(MAGIC):]
-	is_orig := (b.data[0] & FLOW_ORIG) == 0x01
+	is_orig := (b.data[0] & FLOW_ORIG) == FLOW_ORIG
 	//fmt.Printf("Next byte is %d. is_orig=%v\n", b.data[0], is_orig)
 	//skip is_orig
 	b.data = b.data[1:]
