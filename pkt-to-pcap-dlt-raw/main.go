@@ -7,7 +7,6 @@ import (
 	"io"
 	"io/ioutil"
 	"log"
-	"net"
 	"os"
 	"time"
 
@@ -53,7 +52,7 @@ func (b *BufferSplitter) Next() (bool, []byte, error) {
 	return is_orig, payload, nil
 }
 
-func expand(r io.Reader, w *pcapgo.Writer, version int) (int, error) {
+func expand(r io.Reader, w *pcapgo.Writer) (int, error) {
 	//just slurp it up
 	data, err := ioutil.ReadAll(r)
 	if err != nil {
@@ -67,21 +66,6 @@ func expand(r io.Reader, w *pcapgo.Writer, version int) (int, error) {
 	start := time.Now()
 	ts := start
 
-	sMac, _ := net.ParseMAC("00:00:00:00:00:01")
-	dMac, _ := net.ParseMAC("00:00:00:00:00:02")
-
-	opts := gopacket.SerializeOptions{
-		FixLengths:       true,
-		ComputeChecksums: true,
-	}
-
-	eth := layers.Ethernet{
-		SrcMAC: sMac,
-		DstMAC: dMac,
-		//TODO: FIXME: determine automatically
-		EthernetType: layers.EthernetTypeIPv6,
-	}
-
 	for {
 		ts = ts.Add(time.Duration(200) * time.Millisecond)
 		_, payload, err := b.Next()
@@ -92,46 +76,14 @@ func expand(r io.Reader, w *pcapgo.Writer, version int) (int, error) {
 			return totalPackets, err
 		}
 
-		// If the user didn't set a version, use the one from
-		// from the payload.
-		payload_version := version
-		if payload_version == 0 {
-			payload_version = int(payload[0] & 0xF0 >> 4)
-		}
-
-		if payload_version == 4 {
-			eth.EthernetType = layers.EthernetTypeIPv4
-		} else {
-			eth.EthernetType = layers.EthernetTypeIPv6
-		}
-
-		buf := gopacket.NewSerializeBuffer()
-		/*
-			err = eth.SerializeTo(buf, opts)
-			if err != nil {
-				return totalPackets, fmt.Errorf("eth.SerializeTo: %w", err)
-			}
-			bytes, err := buf.AppendBytes(len(payload))
-			if err != nil {
-				return totalPackets, fmt.Errorf("buf.Apppend: %w", err)
-			}
-			copy(bytes, payload)
-		*/
-		gopacket.SerializeLayers(buf, opts,
-			&eth,
-			gopacket.Payload(payload),
-		)
-
-		packetData := buf.Bytes()
-
 		ci := gopacket.CaptureInfo{
 			Timestamp:     ts,
-			CaptureLength: len(packetData),
-			Length:        len(packetData),
+			CaptureLength: len(payload),
+			Length:        len(payload),
 		}
 
-		err = w.WritePacket(ci, packetData)
-		log.Printf("Wrote packet of length %d with version %d", len(packetData), payload_version)
+		err = w.WritePacket(ci, payload)
+		log.Printf("Wrote packet of length %d", len(payload))
 		if err != nil {
 			return totalPackets, fmt.Errorf("Error writing packet %w", err)
 		}
@@ -141,11 +93,10 @@ func expand(r io.Reader, w *pcapgo.Writer, version int) (int, error) {
 }
 
 func main() {
-	versionFlag := flag.Int("version", 0, "The IP version to use set. Use 0 for payload detected.")
 	flag.Parse()
 
 	if len(flag.Args()) != 2 {
-		fmt.Printf("Usage: %s infile outfile\n %v", os.Args[0], flag.Args())
+		fmt.Printf("Usage: %s infile outfile\n %v", os.Args[0])
 		os.Exit(1)
 	}
 
@@ -171,9 +122,9 @@ func main() {
 	}
 
 	w := pcapgo.NewWriter(outf)
-	w.WriteFileHeader(65536, layers.LinkTypeEthernet)
+	w.WriteFileHeader(65536, layers.LinkTypeRaw)
 
-	packets, err := expand(inf, w, *versionFlag)
+	packets, err := expand(inf, w)
 
 	if err != nil {
 		log.Fatal(err)
