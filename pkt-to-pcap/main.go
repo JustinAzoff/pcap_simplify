@@ -9,9 +9,13 @@ import (
 	"log"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/google/gopacket"
+	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
+	"github.com/google/gopacket/pcapgo"
 )
 
 var MAGIC = []byte("\x01PKT")
@@ -51,6 +55,24 @@ func (b *BufferSplitter) Next() (bool, []byte, error) {
 	return is_orig, payload, nil
 }
 
+type PcapPacketWriter struct {
+	file   *os.File
+	writer *pcapgo.Writer
+}
+
+func (w *PcapPacketWriter) WritePacketData(data []byte) error {
+	info := gopacket.CaptureInfo{
+		Timestamp:     time.Now(), // a bit cheap
+		CaptureLength: len(data),
+		Length:        len(data),
+	}
+	return w.writer.WritePacket(info, data)
+}
+
+func (w *PcapPacketWriter) Close() {
+	w.file.Close()
+}
+
 func expand(r io.Reader, output string, port int) (int, error) {
 	//just slurp it up
 	data, err := ioutil.ReadAll(r)
@@ -63,9 +85,24 @@ func expand(r io.Reader, output string, port int) (int, error) {
 	}
 	totalPackets := 0
 	log.Printf("Writing pcap to %s", output)
-	handle, err := pcap.OpenLive(output, 65536, true, pcap.BlockForever)
-	if err != nil {
-		log.Fatal(err)
+	var handle PacketWriter
+	if strings.HasPrefix(output, "file://") {
+		fn := strings.TrimPrefix(output, "file://")
+		f, err := os.Create(fn)
+		if err != nil {
+			log.Fatal(err)
+		}
+		writer := pcapgo.NewWriter(f)
+		writer.WriteFileHeader(65536, layers.LinkTypeEthernet)
+		handle = &PcapPacketWriter{
+			file:   f,
+			writer: writer,
+		}
+	} else {
+		handle, err = pcap.OpenLive(output, 65536, true, pcap.BlockForever)
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	defer handle.Close()
 	t, err := NewTCPPacketGenerator(handle)
@@ -104,7 +141,7 @@ func main() {
 	flag.Parse()
 
 	if len(flag.Args()) != 3 {
-		fmt.Printf("Usage: %s infile network_interface port\n", os.Args[0])
+		fmt.Printf("Usage: %s infile interface_name|file://name.pcap port\n", os.Args[0])
 		fmt.Printf("\nThis streams the packets to network interface on the port specified, and\n")
 		fmt.Printf("will need to be captured by tcpdump/wireshark/etc.\n")
 		os.Exit(1)

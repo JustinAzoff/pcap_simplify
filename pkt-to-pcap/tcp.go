@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
-	"github.com/google/gopacket/pcap"
 )
 
 var (
@@ -22,8 +21,13 @@ type Endpoint struct {
 	tcp layers.TCP
 }
 
+type PacketWriter interface {
+	WritePacketData(data []byte) error
+	Close()
+}
+
 type TCPPacketGenerator struct {
-	handle     *pcap.Handle
+	handle     PacketWriter
 	SourceMAC  net.HardwareAddr
 	DestMAC    net.HardwareAddr
 	SourceIP   net.IP
@@ -38,7 +42,7 @@ type TCPPacketGenerator struct {
 	c_s Endpoint
 }
 
-func NewTCPPacketGenerator(handle *pcap.Handle) (*TCPPacketGenerator, error) {
+func NewTCPPacketGenerator(handle PacketWriter) (*TCPPacketGenerator, error) {
 	//TODO: move to params or whatever
 	smac := "00:00:00:00:00:01"
 	dmac := "00:00:00:00:00:02"
