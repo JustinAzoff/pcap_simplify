@@ -15,9 +15,10 @@ var MAGIC = []byte("\x01PKT")
 var FLOW_ORIG = []byte("\x01")
 var FLOW_RESP = []byte("\x02")
 
-func simplify(r *pcapgo.Reader, w io.Writer) (int, error) {
+func simplify(r *pcapgo.Reader, w io.Writer) (int, int, error) {
 
 	totalPackets := 0
+	packetsWritten := 0
 	ps := gopacket.NewPacketSource(r, r.LinkType())
 	firstSeenFlow := ""
 	for packet := range ps.Packets() {
@@ -27,8 +28,9 @@ func simplify(r *pcapgo.Reader, w io.Writer) (int, error) {
 			firstSeenFlow = flow
 		}
 		//fmt.Printf("First=%s, this=%s\n", firstSeenFlow, flow)
-		if app := packet.ApplicationLayer(); app != nil {
-			payload := app.LayerContents()
+		if tl := packet.TransportLayer(); tl != nil {
+			packetsWritten++
+			payload := tl.LayerPayload()
 			w.Write(MAGIC)
 			if flow == firstSeenFlow {
 				w.Write(FLOW_ORIG)
@@ -38,7 +40,7 @@ func simplify(r *pcapgo.Reader, w io.Writer) (int, error) {
 			w.Write(payload)
 		}
 	}
-	return totalPackets, nil
+	return totalPackets, packetsWritten, nil
 
 }
 
@@ -72,9 +74,9 @@ func main() {
 		return
 	}
 	defer outf.Close()
-	packets, err := simplify(r, outf)
+	totalPackets, packetsWritten, err := simplify(r, outf)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Printf("%d packets rewritten\n", packets)
+	fmt.Printf("%d packets rewritten out of %d total packets\n", packetsWritten, totalPackets)
 }
